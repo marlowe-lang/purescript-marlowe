@@ -12,6 +12,7 @@
   , "control"
   , "datetime"
   , "either"
+  , "effect"
   , "enums"
   , "foldable-traversable"
   , "foreign-object"
@@ -33,6 +34,7 @@
   , "tuples"
   , "typelevel-prelude"
   , "unfoldable"
+  , "unsafe-coerce"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs" ]

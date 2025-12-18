@@ -1,6 +1,8 @@
 module Data.BigInt.Argonaut
   ( module Data.BigInt
   , BigInt(..)
+  , BigIntJson
+  , Reviver
   , abs
   , and
   , digitsInBase
@@ -9,13 +11,16 @@ module Data.BigInt.Argonaut
   , fromInt
   , fromNumber
   , fromString
+  , JsonString(..)
   , not
   , odd
   , or
+  , patchers
   , pow
   , prime
   , quot
   , rem
+  , replacer
   , shl
   , shr
   , toBase'
@@ -28,17 +33,21 @@ module Data.BigInt.Argonaut
 
 import Prelude
 
+import Data.Argonaut (fromString) as Argonaut
 import Data.Argonaut.Aeson (maybeToEither)
 import Data.Argonaut.Core (Json)
 import Data.Argonaut.Decode (class DecodeJson, JsonDecodeError(..))
 import Data.Argonaut.Encode (class EncodeJson)
 import Data.BigInt (BaseDigits)
 import Data.BigInt as BI
+import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn3, runFn3)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, over, unwrap)
 import Data.String.NonEmpty (NonEmptyString)
+import Effect (Effect)
+import Unsafe.Coerce (unsafeCoerce)
 
 newtype BigInt = BigInt BI.BigInt
 
@@ -140,3 +149,54 @@ quot a b = BigInt $ BI.quot (unwrap a) (unwrap b)
 
 rem :: BigInt -> BigInt -> BigInt
 rem a b = BigInt $ BI.rem (unwrap a) (unwrap b)
+
+-- A Json which contains possibly `BigInt` values.
+-- This opaque type can be used to mark the values which contain `BigInt`.
+-- Not sure if we need it other than to make type signatures more clear.
+foreign import data BigIntJson :: Type
+
+fromJson :: Json -> BigIntJson
+fromJson = unsafeCoerce
+
+toBigInt :: BigIntJson -> Maybe BI.BigInt
+toBigInt json =
+  if isBigInt json then Just <<< unsafeCoerce $ json
+  else Nothing
+
+-- | A reviver function which can be passed to the JSON parser.
+-- | Please check the official JS JSON.parse documentation for more details.
+type Reviver = String -> Json -> Json
+-- | String which contains serialized JSON.
+newtype JsonString = JsonString String
+type ParseResultHandlers a =
+  { failure :: String -> a, success :: BigIntJson -> a }
+
+foreign import patchersImpl
+  :: { patchStringify :: Effect Unit
+     , patchParse :: Effect Unit
+     , parseImpl :: forall a. Fn3 (ParseResultHandlers a) Reviver JsonString a
+     }
+
+-- The actual patchers which you **should use in your code** in order to
+-- properly stringify/parse `BigInt` values in JSON.
+patchers
+  :: { patchStringify :: Effect Unit
+     , patchParse :: Effect Unit
+     , parse :: Reviver -> JsonString -> Either String BigIntJson
+     }
+patchers = do
+  let
+    eitherHandlers = { failure: Left, success: Right }
+    parse = runFn3 patchersImpl.parseImpl eitherHandlers
+  { parse
+  , patchStringify: patchersImpl.patchStringify
+  , patchParse: patchersImpl.patchParse
+  }
+
+foreign import isBigInt :: forall a. a -> Boolean
+
+replacer :: String -> BigIntJson -> BigIntJson
+replacer _ value = case toBigInt value of
+  Just bigInt -> fromJson <<< Argonaut.fromString <<< show $ bigInt
+  Nothing -> value
+
