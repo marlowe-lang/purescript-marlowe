@@ -18,6 +18,7 @@ import Data.Bifunctor (lmap)
 import Data.BigInt.Argonaut (BigInt)
 import Data.BigInt.Argonaut as BigInt
 import Data.DateTime.Instant (Instant, unInstant)
+import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Int (round)
 import Data.Lens (Lens')
@@ -175,8 +176,12 @@ instance encodeJsonValue :: EncodeJson Value where
       }
 
 instance decodeJsonValue :: DecodeJson Value where
-  decodeJson = caseConstantFrom valueConstants \json ->
-    Constant <$> decodeJson json <|> decodeObject json
+  decodeJson =
+    -- Don't use <|> here - trying to decode a bigint as an object throws a
+    -- runtime error!
+    caseConstantFrom valueConstants \json -> case decodeJson json of
+      Right bigint -> pure $ Constant bigint
+      Left _ -> decodeObject json
     where
     valueConstants =
       Map.fromFoldable
