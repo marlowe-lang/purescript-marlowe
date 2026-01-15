@@ -7,3 +7,9 @@ The test is automatically executed on the CI, but you can trigger a manual test 
 ```bash
 [nix-shell] $ marlowe-test
 ```
+
+To update the version of the spec test driver we need to update the input flake
+
+```bash
+$ nix flake lock --update-input marloweSpec
+```
